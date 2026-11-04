@@ -246,3 +246,7 @@ form.wrapline select { flex: 0 1 160px; }
 .langs a.on { color: var(--ink); font-weight: 600; }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+.admins .rows { margin-bottom: 12px; }
+.invite-box { background: var(--ink-soft); border-radius: var(--r-md); padding: 12px 14px; }
+.invite-box p { margin: 0 0 4px; }

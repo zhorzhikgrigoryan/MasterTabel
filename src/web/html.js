@@ -43,7 +43,7 @@ export function layout({ L, lang, title, active, body, flash, bare = false }) {
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Armenian:wght@400;500;600;700&family=Onest:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/style.css?v=2">
+<link rel="stylesheet" href="/static/style.css?v=3">
 <link rel="icon" href="data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#1F3A93"/><path d="M8 11h16M8 16h16M8 21h10M13 7v18M19 7v18" stroke="#F4F6F1" stroke-width="2"/></svg>')}">
 </head>
 <body class="${bare ? 'bare' : ''}">

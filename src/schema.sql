@@ -111,3 +111,10 @@ CREATE TABLE IF NOT EXISTS sessions (
   telegram_id BIGINT NOT NULL,
   expires_at  TIMESTAMPTZ NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS admins (
+  telegram_id BIGINT PRIMARY KEY,
+  name        TEXT NOT NULL DEFAULT '',
+  added_by    BIGINT,
+  added_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);

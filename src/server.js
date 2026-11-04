@@ -7,6 +7,7 @@ import { adminRouter } from './web/routes.js';
 import { createBot, reminderSender, publicUrl, rememberPublicUrl } from './bot.js';
 import { getSettings, setSetting } from './core/settings.js';
 import { startScheduler } from './reminders.js';
+import { migrateAdmins } from './core/auth.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3000);
@@ -17,6 +18,7 @@ async function main() {
     process.exit(1);
   }
   await connect();
+  await migrateAdmins();
   const saved = (await getSettings()).public_url;
   if (saved) rememberPublicUrl(saved);
   console.log(process.env.DATABASE_URL ? 'Database: PostgreSQL' : 'Database: local (./data)');

@@ -4,8 +4,8 @@ import { t, ot, LANG_NAMES, buttonKey } from './i18n.js';
 import * as E from './core/employees.js';
 import * as S from './core/shifts.js';
 import { summarizeOne } from './core/calc.js';
-import { getSettings, getOwner } from './core/settings.js';
-import { confirmToken } from './core/auth.js';
+import { getSettings } from './core/settings.js';
+import { confirmToken, isAdmin, listAdmins } from './core/auth.js';
 import { hm, today, weekStart, addDays, periodOf, parseHM, fmtMin, fmtAmd } from './time.js';
 
 const state = new Map(); // telegramId -> { awaiting: 'in'|'out', invite: token }
@@ -39,11 +39,12 @@ export function createBot(token) {
   let ownerLang = 'hy';
 
   async function notifyOwner(build) {
-    const owner = await getOwner();
     const st = await getSettings();
-    if (!owner || !st.notify_owner_requests) return;
+    if (!st.notify_owner_requests) return;
     ownerLang = st.admin_lang;
-    try { await bot.api.sendMessage(owner.telegram_id, build(ot(st.admin_lang))); } catch (e) { console.error('notify owner', e.message); }
+    for (const a of await listAdmins()) {
+      try { await bot.api.sendMessage(a.telegram_id, build(ot(st.admin_lang))); } catch (e) { console.error('notify admin', e.message); }
+    }
   }
 
   // ---------- /start (invite, owner claim/login) ----------
@@ -53,11 +54,13 @@ export function createBot(token) {
     const st = await getSettings();
     const O = ot(st.admin_lang);
 
-    if (payload.startsWith('claim_') || payload.startsWith('login_')) {
-      const kind = payload.startsWith('claim_') ? 'claim' : 'login';
-      const res = await confirmToken(kind, payload.slice(6), from.id, [from.first_name, from.last_name].filter(Boolean).join(' '));
+    const m = payload.match(/^(claim|login|admin)_(.+)$/);
+    if (m) {
+      const kind = m[1] === 'admin' ? 'invite' : m[1];
+      const res = await confirmToken(kind, m[2], from.id, [from.first_name, from.last_name].filter(Boolean).join(' '));
+      if (res === 'added') return ctx.reply(O.admin_added(publicUrl()));
       if (res === 'ok') return ctx.reply(kind === 'claim' ? O.claimed(publicUrl()) : O.login_ok);
-      if (res === 'not_owner' || res === 'taken') return ctx.reply(O.not_owner);
+      if (res === 'not_admin' || res === 'taken') return ctx.reply(O.not_owner);
       return ctx.reply(O.link_expired);
     }
 
@@ -79,15 +82,13 @@ export function createBot(token) {
       if (emp.status === 'deactivated') return ctx.reply(t(emp.lang).deactivated, { reply_markup: { remove_keyboard: true } });
       return ctx.reply(t(emp.lang).joined(emp.full_name), { reply_markup: await keyboardFor(emp) });
     }
-    const owner = await getOwner();
-    if (owner && String(owner.telegram_id) === String(from.id)) return ctx.reply(O.hello(publicUrl()));
+    if (await isAdmin(from.id)) return ctx.reply(O.hello(publicUrl()));
     return ctx.reply(t('hy').need_invite);
   });
 
   bot.command('panel', async (ctx) => {
-    const owner = await getOwner();
     const st = await getSettings();
-    if (owner && String(owner.telegram_id) === String(ctx.from.id)) return ctx.reply(ot(st.admin_lang).hello(publicUrl()));
+    if (await isAdmin(ctx.from.id)) return ctx.reply(ot(st.admin_lang).hello(publicUrl()));
   });
 
   // ---------- Joining: phone number ----------

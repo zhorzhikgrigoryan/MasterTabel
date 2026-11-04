@@ -6,8 +6,10 @@ import * as E from '../core/employees.js';
 import * as S from '../core/shifts.js';
 import * as P from '../core/payroll.js';
 import { summarize, summarizeOne, shiftMinutes } from '../core/calc.js';
-import { getSettings, setSetting, getOwner } from '../core/settings.js';
-import { createAuthToken, exchangeToken, validSession, logout, createSession } from '../core/auth.js';
+import { getSettings, setSetting } from '../core/settings.js';
+import {
+  createAuthToken, exchangeToken, sessionAdmin, logout, createSession, hasAdmins, listAdmins, removeAdmin,
+} from '../core/auth.js';
 import {
   today, hm, dateOf, addDays, weekStart, monthStart, monthEnd, daysBetween, weekday, periodOf, shiftPeriod,
   fmtMin, fmtAmd, parseHM, minutesOfDay, hmToMin,
@@ -63,7 +65,7 @@ export function adminRouter({ botUsername }) {
   const tme = (payload) => (botUsername() ? `https://t.me/${botUsername()}?start=${payload}` : null);
 
   r.get('/login', async (req, res) => {
-    const L = req.L; const owner = await getOwner();
+    const L = req.L; const owner = await hasAdmins();
     const kind = owner ? 'login' : 'claim';
     const token = await createAuthToken(kind);
     const link = tme(`${kind}_${token}`);
@@ -94,9 +96,8 @@ export function adminRouter({ botUsername }) {
 
   if (process.env.DEV_LOGIN) {
     r.post('/auth/dev', async (req, res) => {
-      let owner = await getOwner();
-      if (!owner) { owner = { telegram_id: '1', name: 'Dev' }; await setSetting('owner', owner); }
-      setCookie(res, COOKIE, await createSession(owner.telegram_id), 30);
+      await q(`INSERT INTO admins (telegram_id, name) VALUES (1, 'Dev') ON CONFLICT DO NOTHING`);
+      setCookie(res, COOKIE, await createSession('1'), 30);
       res.redirect('/');
     });
   }
@@ -108,7 +109,8 @@ export function adminRouter({ botUsername }) {
   });
 
   r.use(async (req, res, next) => {
-    if (await validSession(cookies(req)[COOKIE])) return next();
+    req.adminId = await sessionAdmin(cookies(req)[COOKIE]);
+    if (req.adminId) return next();
     if (req.method === 'GET') return res.redirect('/login');
     res.status(401).send('Unauthorized');
   });
@@ -575,6 +577,9 @@ export function adminRouter({ botUsername }) {
   r.get('/settings', async (req, res) => {
     const { L, settings: st } = req;
     const bot = botUsername();
+    const admins = await listAdmins();
+    const inv = /^[A-Za-z0-9_-]{10,}$/.test(String(req.query.invite || '')) ? req.query.invite : null;
+    const inviteLink = inv ? tme(`admin_${inv}`) : null;
     res.page({ title: L.settings_title, active: 'settings', body: html`
       <div class="head"><h1>${L.settings_title}</h1></div>
       <form method="post" action="/settings" class="form">
@@ -597,8 +602,31 @@ export function adminRouter({ botUsername }) {
         </fieldset>
         <div class="actions"><button class="btn primary">${L.save}</button></div>
       </form>
+      <section class="block admins" id="admins">
+        <h2>${L.admins}</h2>
+        <p class="muted small">${L.admins_hint}</p>
+        <ul class="rows">${admins.map((a) => html`<li class="row"><div>
+          <span class="row-main"><strong>${a.name || `Telegram ${a.telegram_id}`}</strong>
+            <span class="muted small">${L.admin_since(dateLabel(L, req.lang, dateOf(a.added_at)))}</span></span>
+          <span class="row-side">${String(a.telegram_id) === req.adminId ? html`<span class="tag live">${L.you}</span>`
+            : html`<form method="post" action="/admins/${a.telegram_id}/remove" class="inline-del"><button class="btn danger ghost small" data-confirm="${L.remove_admin_confirm(a.name || a.telegram_id)}">${L.remove}</button></form>`}</span>
+        </div></li>`)}</ul>
+        ${inviteLink ? html`<div class="invite-box"><p class="small">${L.invite_admin_hint}</p>
+          <div class="copyrow"><input readonly value="${inviteLink}" id="adminInv"><button class="btn primary" type="button" data-copy="#adminInv" data-copied="${L.copied}">${L.copy}</button></div></div>`
+          : html`<form method="post" action="/admins/invite"><button class="btn ghost" ${bot ? '' : 'disabled'}>+ ${L.invite_admin}</button></form>`}
+      </section>
       ${bot ? html`<p class="muted small">${L.bot_link}: <a href="https://t.me/${bot}">t.me/${bot}</a></p>` : ''}
       <form method="post" action="/logout"><button class="btn ghost">${L.logout}</button></form>` });
+  });
+
+  r.post('/admins/invite', async (req, res) => {
+    const token = await createAuthToken('invite', req.adminId);
+    res.redirect(`/settings?invite=${token}#admins`);
+  });
+  r.post('/admins/:tid/remove', async (req, res) => {
+    if (req.params.tid === req.adminId) return res.redirect('/settings?err=invalid');
+    const r2 = await removeAdmin(req.params.tid);
+    res.redirect(`/settings?${r2 === 'last' ? 'err=last_admin' : 'ok=saved'}`);
   });
 
   r.post('/settings', async (req, res) => {

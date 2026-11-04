@@ -4,7 +4,7 @@ import { connect, close, q } from '../src/db.js';
 import { createBot } from '../src/bot.js';
 import { tick } from '../src/reminders.js';
 import * as E from '../src/core/employees.js';
-import { createAuthToken, exchangeToken, validSession } from '../src/core/auth.js';
+import { createAuthToken, exchangeToken, validSession, listAdmins, removeAdmin, isAdmin } from '../src/core/auth.js';
 import { t } from '../src/i18n.js';
 import { at, today, weekday } from '../src/time.js';
 
@@ -48,6 +48,27 @@ test('owner claims the bot, then logs in', async () => {
   const login = await createAuthToken('login');
   await send(msg(USER, `/start login_${login}`));
   assert.equal(await exchangeToken(login), null);
+});
+
+test('admin invites a second admin with full access, then removes them', async () => {
+  const SECOND = { id: 9002, is_bot: false, first_name: 'Ani' };
+  const inv = await createAuthToken('invite', OWNER.id);
+  await send(msg(SECOND, `/start admin_${inv}`));
+  assert.match(last(), /ադմին/);
+  assert.ok(await isAdmin(SECOND.id));
+  // the invite works only once
+  await send(msg({ id: 9003, is_bot: false, first_name: 'X' }, `/start admin_${inv}`));
+  assert.ok(!(await isAdmin(9003)));
+  // second admin can log in
+  const login = await createAuthToken('login');
+  await send(msg(SECOND, `/start login_${login}`));
+  const session = await exchangeToken(login);
+  assert.ok(await validSession(session));
+  // removed -> session no longer valid; last admin can't be removed
+  assert.equal(await removeAdmin(SECOND.id), 'ok');
+  assert.equal(await validSession(session), false);
+  assert.equal((await listAdmins()).length, 1);
+  assert.equal(await removeAdmin(OWNER.id), 'last');
 });
 
 test('employee joins, checks in and out, asks hours, forgot flow, language', async () => {

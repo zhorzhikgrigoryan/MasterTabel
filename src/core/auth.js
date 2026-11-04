@@ -1,37 +1,75 @@
-// Owner login through the Telegram bot (no passwords).
-// 1. Browser asks for a token; page shows a t.me link with it.
-// 2. Owner taps the link -> bot confirms the token for that Telegram account.
-// 3. Browser polls; once confirmed it receives a session cookie.
+// Admin login through the Telegram bot (no passwords). Several admins, all with full access.
+// Login: browser gets a token -> admin opens t.me link -> bot confirms -> browser polls and gets a session.
+// Claim: the very first person to log in becomes the first admin.
+// Invite: an admin creates a one-time link; whoever opens it in Telegram becomes an admin.
 import { q, one } from '../db.js';
 import { newToken } from './employees.js';
-import { getOwner, setSetting } from './settings.js';
+import { getOwner } from './settings.js';
 
-const TOKEN_TTL_MIN = 15;
+const LOGIN_TTL_MIN = 15;
+const INVITE_TTL_MIN = 24 * 60;
 const SESSION_DAYS = 30;
 
-export async function createAuthToken(kind) {
+/** Move the original single owner into the admins table (one-time, on start). */
+export async function migrateAdmins() {
+  const n = await one('SELECT count(*)::int AS n FROM admins');
+  if (n.n > 0) return;
+  const owner = await getOwner();
+  if (owner) await addAdmin(owner.telegram_id, owner.name, null);
+}
+
+export const listAdmins = () => q('SELECT * FROM admins ORDER BY added_at');
+export async function isAdmin(telegramId) {
+  return !!(await one('SELECT 1 FROM admins WHERE telegram_id=$1', [String(telegramId)]));
+}
+export async function hasAdmins() {
+  return (await one('SELECT count(*)::int AS n FROM admins')).n > 0;
+}
+async function addAdmin(telegramId, name, addedBy) {
+  await q(`INSERT INTO admins (telegram_id, name, added_by) VALUES ($1,$2,$3)
+           ON CONFLICT (telegram_id) DO UPDATE SET name = COALESCE(NULLIF(EXCLUDED.name, ''), admins.name)`,
+  [String(telegramId), name || '', addedBy ? String(addedBy) : null]);
+}
+
+/** Remove an admin and end their sessions. The last admin can't be removed. */
+export async function removeAdmin(telegramId) {
+  const all = await listAdmins();
+  if (all.length <= 1) return 'last';
+  await q('DELETE FROM admins WHERE telegram_id=$1', [String(telegramId)]);
+  await q('DELETE FROM sessions WHERE telegram_id=$1', [String(telegramId)]);
+  return 'ok';
+}
+
+export async function createAuthToken(kind, createdBy = null) {
   const token = newToken(16);
-  await q('INSERT INTO auth_tokens (token, kind) VALUES ($1,$2)', [token, kind]);
+  await q('INSERT INTO auth_tokens (token, kind, telegram_id) VALUES ($1,$2,$3)', [token, kind, createdBy ? String(createdBy) : null]);
   return token;
 }
 
 async function freshToken(token, kind) {
+  const ttl = kind === 'invite' ? INVITE_TTL_MIN : LOGIN_TTL_MIN;
   return one(
     `SELECT * FROM auth_tokens WHERE token=$1 AND kind=$2 AND status='waiting'
-     AND created_at > now() - ($3 || ' minutes')::interval`, [token, kind, String(TOKEN_TTL_MIN)],
+     AND created_at > now() - ($3 || ' minutes')::interval`, [token, kind, String(ttl)],
   );
 }
 
-/** Called by the bot. Returns 'ok' | 'expired' | 'not_owner' | 'taken'. */
+/** Called by the bot. Returns 'ok' | 'added' | 'expired' | 'not_admin' | 'taken'. */
 export async function confirmToken(kind, token, telegramId, name) {
   const row = await freshToken(token, kind);
   if (!row) return 'expired';
-  const owner = await getOwner();
+  if (kind === 'invite') {
+    await addAdmin(telegramId, name, row.telegram_id);
+    await q(`UPDATE auth_tokens SET status='used', telegram_id=$2 WHERE token=$1`, [token, String(telegramId)]);
+    return 'added';
+  }
   if (kind === 'claim') {
-    if (owner) return 'taken';
-    await setSetting('owner', { telegram_id: String(telegramId), name: name || '' });
-  } else if (!owner || String(owner.telegram_id) !== String(telegramId)) {
-    return 'not_owner';
+    if (await hasAdmins()) return 'taken';
+    await addAdmin(telegramId, name, null);
+  } else if (!(await isAdmin(telegramId))) {
+    return 'not_admin';
+  } else {
+    await addAdmin(telegramId, name, null); // refresh the display name
   }
   await q(`UPDATE auth_tokens SET status='confirmed', telegram_id=$2 WHERE token=$1`, [token, String(telegramId)]);
   return 'ok';
@@ -39,7 +77,7 @@ export async function confirmToken(kind, token, telegramId, name) {
 
 /** Called by the browser while waiting. Returns a session token once confirmed. */
 export async function exchangeToken(token) {
-  const row = await one(`SELECT * FROM auth_tokens WHERE token=$1 AND status='confirmed'`, [token]);
+  const row = await one(`SELECT * FROM auth_tokens WHERE token=$1 AND status='confirmed' AND kind IN ('claim','login')`, [token]);
   if (!row) return null;
   await q(`UPDATE auth_tokens SET status='used' WHERE token=$1`, [token]);
   return createSession(row.telegram_id);
@@ -52,12 +90,14 @@ export async function createSession(telegramId) {
   return s;
 }
 
-export async function validSession(token) {
-  if (!token) return false;
-  const s = await one('SELECT * FROM sessions WHERE token=$1 AND expires_at > now()', [token]);
-  if (!s) return false;
-  const owner = await getOwner();
-  return !!owner && String(owner.telegram_id) === String(s.telegram_id);
+/** Returns the logged-in admin's Telegram ID, or null. */
+export async function sessionAdmin(token) {
+  if (!token) return null;
+  const s = await one(
+    `SELECT s.telegram_id FROM sessions s JOIN admins a ON a.telegram_id = s.telegram_id
+     WHERE s.token=$1 AND s.expires_at > now()`, [token]);
+  return s ? String(s.telegram_id) : null;
 }
+export const validSession = async (token) => !!(await sessionAdmin(token));
 
 export const logout = (token) => q('DELETE FROM sessions WHERE token=$1', [token]);
