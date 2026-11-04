@@ -4,7 +4,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { connect } from './db.js';
 import { adminRouter } from './web/routes.js';
-import { createBot, reminderSender, publicUrl } from './bot.js';
+import { createBot, reminderSender, publicUrl, rememberPublicUrl } from './bot.js';
+import { getSettings, setSetting } from './core/settings.js';
 import { startScheduler } from './reminders.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -16,6 +17,8 @@ async function main() {
     process.exit(1);
   }
   await connect();
+  const saved = (await getSettings()).public_url;
+  if (saved) rememberPublicUrl(saved);
   console.log(process.env.DATABASE_URL ? 'Database: PostgreSQL' : 'Database: local (./data)');
 
   let botUsername = null;
@@ -36,6 +39,15 @@ async function main() {
   app.disable('x-powered-by');
   app.set('trust proxy', 1);
   app.get('/health', (req, res) => res.json({ ok: true }));
+  // Learn the panel's public address from real visits, so bot links never say "localhost".
+  app.use((req, res, next) => {
+    const host = req.get('x-forwarded-host') || req.get('host');
+    if (host && !/localhost|127\.0\.0\.1/.test(host)) {
+      const url = `${req.protocol}://${host}`;
+      if (url !== publicUrl()) { rememberPublicUrl(url); setSetting('public_url', url).catch(() => {}); }
+    }
+    next();
+  });
   app.use('/static', express.static(path.join(here, '..', 'public'), { maxAge: '1h' }));
   app.use(adminRouter({ botUsername: () => botUsername }));
   app.use((err, req, res, next) => { console.error(err); res.status(500).send('Something went wrong. Please go back and try again.'); });

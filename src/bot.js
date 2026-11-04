@@ -10,9 +10,12 @@ import { hm, today, weekStart, addDays, periodOf, parseHM, fmtMin, fmtAmd } from
 
 const state = new Map(); // telegramId -> { awaiting: 'in'|'out', invite: token }
 
+let seenUrl = null; // learned from the first real visit to the panel
+export function rememberPublicUrl(url) { if (url && !/localhost|127\.0\.0\.1/.test(url)) seenUrl = url; }
 export function publicUrl() {
   if (process.env.PUBLIC_URL) return process.env.PUBLIC_URL.replace(/\/$/, '');
   if (process.env.RAILWAY_PUBLIC_DOMAIN) return `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`;
+  if (seenUrl) return seenUrl;
   return `http://localhost:${process.env.PORT || 3000}`;
 }
 
