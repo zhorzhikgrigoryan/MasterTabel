@@ -2,7 +2,7 @@
 const hy = {
   app: 'MasterTabel',
   nav_today: 'Այսօր', nav_timesheet: 'Տաբել', nav_people: 'Աշխատակիցներ', nav_payroll: 'Վճարումներ', nav_settings: 'Կարգավորումներ',
-  nav_people_s: 'Անձնակազմ', nav_payroll_s: 'Վճարներ',
+  nav_people_s: 'Անձնակազմ', nav_payroll_s: 'Վճարներ', nav_analytics: 'Վերլուծություն', nav_analytics_s: 'Գրաֆիկներ',
   logout: 'Դուրս գալ',
   weekdays: ['Երկ', 'Երք', 'Չրք', 'Հնգ', 'Ուրբ', 'Շբթ', 'Կիր'],
   months: ['հունվար', 'փետրվար', 'մարտ', 'ապրիլ', 'մայիս', 'հունիս', 'հուլիս', 'օգոստոս', 'սեպտեմբեր', 'հոկտեմբեր', 'նոյեմբեր', 'դեկտեմբեր'],
@@ -97,7 +97,7 @@ const hy = {
 const en = {
   app: 'MasterTabel',
   nav_today: 'Today', nav_timesheet: 'Timesheet', nav_people: 'Employees', nav_payroll: 'Payroll', nav_settings: 'Settings',
-  nav_people_s: 'Employees', nav_payroll_s: 'Payroll',
+  nav_people_s: 'Employees', nav_payroll_s: 'Payroll', nav_analytics: 'Analytics', nav_analytics_s: 'Analytics',
   logout: 'Log out',
   weekdays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
   months: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],

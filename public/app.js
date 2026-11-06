@@ -29,3 +29,26 @@ if (loginBtn) {
   // Also poll quietly in case the owner opened the link on another device.
   timer = setInterval(poll, 3000);
 }
+
+// Chart tooltips: any element with data-tip shows it on hover, or on tap on touch screens.
+(() => {
+  if (!document.querySelector('[data-tip]')) return;
+  const tip = document.createElement('div'); tip.id = 'tip'; tip.hidden = true; tip.setAttribute('role', 'status');
+  document.body.appendChild(tip);
+  const place = (x, y) => {
+    const r = tip.getBoundingClientRect();
+    tip.style.left = `${Math.min(window.innerWidth - r.width - 8, Math.max(8, x - r.width / 2))}px`;
+    tip.style.top = `${Math.max(8, y - r.height - 12)}px`;
+  };
+  const show = (el, x, y) => { tip.textContent = el.dataset.tip; tip.hidden = false; place(x, y); };
+  document.addEventListener('pointermove', (e) => {
+    if (e.pointerType === 'touch') return;
+    const el = e.target.closest('[data-tip]');
+    if (el) show(el, e.clientX, e.clientY); else tip.hidden = true;
+  });
+  document.addEventListener('click', (e) => {
+    const el = e.target.closest('[data-tip]');
+    if (el) show(el, e.clientX, e.clientY); else tip.hidden = true;
+  });
+  window.addEventListener('scroll', () => { tip.hidden = true; }, { passive: true });
+})();

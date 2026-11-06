@@ -177,3 +177,16 @@ test('weekly presets and overlapping payment guard', async () => {
   assert.equal(p.overlap.length, 1);
   await assert.rejects(P.markPaid(emp, '2026-06-01', '2026-06-07', settings), /overlap/);
 });
+
+test('analytics totals match the timesheet', async () => {
+  const { analytics } = await import('../src/core/analytics.js');
+  const emp = await E.createEmployee({ full_name: 'Stats', phone: '+37491000097', hourly_amd: 1200, rate_from: '2025-01-01', sched_days: [1, 2, 3, 4, 5], sched_start: '09:00', sched_end: '18:00' });
+  await S.checkIn(emp, settings, at('2025-02-03', '09:30')); await S.checkOut(emp, settings, at('2025-02-03', '17:30')); // late, 8h
+  await S.adminCreate(emp, '2025-02-04', '09:00', '13:00', null, settings); // 4h
+  const a = await analytics('2025-02-01', '2025-02-28', settings);
+  const row = a.people.find((p) => p.employee.id === emp.id);
+  assert.equal(row.minutes, 720); assert.equal(row.days, 2); assert.equal(row.late, 1); assert.equal(row.cost, 14400);
+  assert.equal(a.daily.length, 28);
+  assert.equal(a.weekdays[0].minutes, 480); // Monday
+  assert.equal(a.months.at(-1).month, '2025-02-01');
+});

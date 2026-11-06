@@ -16,6 +16,7 @@ import {
 } from '../time.js';
 import { timesheetXlsx, payrollXlsx } from '../export.js';
 import { receiptsPdf } from '../documents/receipt.js';
+import { registerAnalytics } from './analytics.js';
 
 const COOKIE = 'mt_s';
 
@@ -703,6 +704,8 @@ export function adminRouter({ botUsername }) {
     res.set('Content-Disposition', `attachment; filename="payroll_${per.start}_${per.end}.xlsx"`);
     res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').send(buf);
   });
+
+  registerAnalytics(r, { rangeLabel });
 
   // ================= RECEIPTS (PDF) =================
   const asciiName = (s) => `receipt_${String(s).replace(/[^A-Za-z0-9-]+/g, '_').replace(/^_+|_+$/g, '')}`;
