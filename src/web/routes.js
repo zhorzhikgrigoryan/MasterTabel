@@ -12,7 +12,7 @@ import {
 } from '../core/auth.js';
 import {
   today, hm, dateOf, addDays, weekStart, monthStart, monthEnd, daysBetween, weekday, periodOf, shiftPeriod,
-  fmtMin, fmtAmd, parseHM, minutesOfDay, hmToMin,
+  fmtMin, fmtAmd, parseHM, minutesOfDay, hmToMin, dayDiff, WEEK_PRESETS, presetRange, detectPreset,
 } from '../time.js';
 import { timesheetXlsx, payrollXlsx } from '../export.js';
 import { receiptsPdf } from '../documents/receipt.js';
@@ -463,40 +463,71 @@ export function adminRouter({ botUsername }) {
   r.post('/employees/:id/reinvite', async (req, res) => { await E.regenerateInvite(Number(req.params.id)); res.redirect(`/employees/${req.params.id}?ok=saved`); });
 
   // ================= PAYROLL =================
-  async function payrollGroup(L, lang, st, cycle, start, emps, param, otherParams) {
-    const end = periodOf(cycle, start).end;
-    const prev = shiftPeriod(cycle, start, -1).start; const next = shiftPeriod(cycle, start, 1).start;
+  async function payrollGroup(L, lang, st, cycle, start, end, emps, controls) {
     const list = emps.filter((e) => e.pay_cycle === cycle);
     const rows = [];
     for (const e of list) rows.push(await P.periodSummary(e, start, end, st));
     const tot = rows.reduce((s, p) => s + p.balance, 0);
-    const nav = (s) => `/payroll?${param}=${s}${otherParams}`;
+    const qs = `start=${start}&end=${end}`;
     return html`<section class="block">
       <div class="groupbar"><h2>${cycle === 'weekly' ? L.weekly_people : L.monthly_people}</h2>
-        <div class="toolbar tight"><a class="btn ghost" href="${nav(prev)}" aria-label="${L.prev}">‹</a><span class="period">${rangeLabel(L, lang, start, end)}</span><a class="btn ghost" href="${nav(next)}" aria-label="${L.next}">›</a>
-        <a class="btn ghost" href="/export/payroll.xlsx?cycle=${cycle}&start=${start}">${L.export_xlsx}</a>
-        ${rows.length ? html`<a class="btn ghost" href="/receipts.pdf?cycle=${cycle}&start=${start}" target="_blank" rel="noopener">${L.receipts_all}</a>` : ''}</div></div>
+        <div class="toolbar tight">
+        <a class="btn ghost" href="/export/payroll.xlsx?cycle=${cycle}&${qs}">${L.export_xlsx}</a>
+        ${rows.length ? html`<a class="btn ghost" href="/receipts.pdf?cycle=${cycle}&${qs}" target="_blank" rel="noopener">${L.receipts_all}</a>` : ''}</div></div>
+      ${controls}
       ${rows.length ? html`<div class="table-wrap"><table class="pay">
         <thead><tr><th scope="col">${L.employee}</th><th scope="col">${L.hours}</th><th scope="col">${L.earned}</th><th scope="col">${L.adjustments}</th><th scope="col">${L.paid}</th><th scope="col">${L.to_pay}</th><th scope="col"><span class="sr">${L.status}</span></th><th scope="col"><span class="sr">${L.receipt}</span></th></tr></thead>
         <tbody>${rows.map((p) => html`<tr>
-          <th scope="row"><a href="/payroll/${p.employee.id}?start=${start}&end=${end}">${p.employee.full_name}</a>${p.flags.pending || p.flags.review ? html` <span class="tag warn" title="${L.warn_open}">!</span>` : ''}</th>
+          <th scope="row"><a href="/payroll/${p.employee.id}?${qs}">${p.employee.full_name}</a>${p.flags.pending || p.flags.review ? html` <span class="tag warn" title="${L.warn_open}">!</span>` : ''}</th>
           <td class="time">${fmtMin(p.minutes)}</td><td class="amd">${fmtAmd(p.earned)}</td>
           <td class="amd">${p.bonus - p.advance - p.deduction ? fmtAmd(p.bonus - p.advance - p.deduction) : '—'}</td>
           <td class="amd">${p.paid ? fmtAmd(p.paid) : '—'}</td><td class="amd strong">${fmtAmd(p.balance)}</td>
-          <td><a class="tag ${p.locked ? 'live' : ''}" href="/payroll/${p.employee.id}?start=${start}&end=${end}">${p.locked ? L.locked : L.not_paid}</a></td>
-          <td>${p.minutes || p.balance || p.paid ? html`<a class="btn ghost small" href="/payroll/${p.employee.id}/receipt.pdf?start=${start}&end=${end}" target="_blank" rel="noopener">${L.receipt}</a>` : ''}</td></tr>`)}</tbody>
+          <td>${p.overlap.length && !p.locked ? html`<a class="tag warn" href="/payroll/${p.employee.id}?${qs}" title="${L.overlap_note(p.overlap.map((o) => `${ddmm(o.period_start)}–${ddmm(o.period_end)}`).join(', '))}">${L.overlap_short}</a>`
+            : html`<a class="tag ${p.locked ? 'live' : ''}" href="/payroll/${p.employee.id}?${qs}">${p.locked ? L.locked : L.not_paid}</a>`}</td>
+          <td>${p.minutes || p.balance || p.paid ? html`<a class="btn ghost small" href="/payroll/${p.employee.id}/receipt.pdf?${qs}" target="_blank" rel="noopener">${L.receipt}</a>` : ''}</td></tr>`)}</tbody>
         <tfoot><tr><th scope="row">${L.total}</th><td></td><td></td><td></td><td></td><td class="amd strong">${fmtAmd(tot)}</td><td></td><td></td></tr></tfoot>
       </table></div>` : html`<p class="empty">${L.nobody}</p>`}
     </section>`;
   }
 
+  /** Weekly payroll range from the URL: a quick preset, a custom from–to, or the remembered preset. */
+  async function weeklyRange(qy, st) {
+    if (WEEK_PRESETS.includes(qy.wp)) {
+      await setSetting('week_preset', qy.wp);
+      return presetRange(qy.wp, isDate(qy.wa) ? qy.wa : today());
+    }
+    if (isDate(qy.ws) && isDate(qy.we) && qy.ws <= qy.we && dayDiff(qy.ws, qy.we) <= 62) return { start: qy.ws, end: qy.we };
+    const preset = WEEK_PRESETS.includes(st.week_preset) ? st.week_preset : 'mon_sun';
+    return presetRange(preset, isDate(qy.w) ? qy.w : today());
+  }
+
   r.get('/payroll', async (req, res) => {
     const { L, lang, settings: st } = req;
-    const w = isDate(req.query.w) ? weekStart(req.query.w) : weekStart(today());
+    const wk = await weeklyRange(req.query, st);
     const m = isDate(req.query.m) ? monthStart(req.query.m) : monthStart(today());
+    const mEnd = monthEnd(m);
     const emps = await E.listEmployees({ includeInactive: true });
-    const monthly = await payrollGroup(L, lang, st, 'monthly', m, emps, 'm', `&w=${w}`);
-    const weekly = await payrollGroup(L, lang, st, 'weekly', w, emps, 'w', `&m=${m}`);
+    const wq = `ws=${wk.start}&we=${wk.end}`;
+    const mPrev = shiftPeriod('monthly', m, -1).start; const mNext = shiftPeriod('monthly', m, 1).start;
+    const monthlyControls = html`<div class="rangebar"><div class="toolbar tight">
+      <a class="btn ghost" href="/payroll?m=${mPrev}&${wq}" aria-label="${L.prev}">‹</a><span class="period">${rangeLabel(L, lang, m, mEnd)}</span>
+      <a class="btn ghost" href="/payroll?m=${mNext}&${wq}" aria-label="${L.next}">›</a></div></div>`;
+    const len = dayDiff(wk.start, wk.end) + 1; const step = len <= 7 ? 7 : len;
+    const active = detectPreset(wk.start, wk.end);
+    const anchor = addDays(wk.start, Math.min(3, len - 1));
+    const weeklyControls = html`<div class="rangebar">
+      <div class="seg" role="group" aria-label="${L.quick_range}">${WEEK_PRESETS.map((k) => html`<a class="${active === k ? 'on' : ''}" href="/payroll?wp=${k}&wa=${anchor}&m=${m}" ${active === k ? raw('aria-current="true"') : ''}>${L[`preset_${k}`]}</a>`)}</div>
+      <form class="range" method="get" action="/payroll">
+        <input type="hidden" name="m" value="${m}">
+        <a class="btn ghost" href="/payroll?ws=${addDays(wk.start, -step)}&we=${addDays(wk.end, -step)}&m=${m}" aria-label="${L.prev}">‹</a>
+        <label><span class="sr">${L.range_from}</span><input type="date" name="ws" value="${wk.start}" required></label>
+        <span class="dash" aria-hidden="true">–</span>
+        <label><span class="sr">${L.range_to}</span><input type="date" name="we" value="${wk.end}" required></label>
+        <a class="btn ghost" href="/payroll?ws=${addDays(wk.start, step)}&we=${addDays(wk.end, step)}&m=${m}" aria-label="${L.next}">›</a>
+        <button class="btn primary">${L.show}</button>
+      </form></div>`;
+    const monthly = await payrollGroup(L, lang, st, 'monthly', m, mEnd, emps, monthlyControls);
+    const weekly = await payrollGroup(L, lang, st, 'weekly', wk.start, wk.end, emps, weeklyControls);
     res.page({ title: L.payroll_title, active: 'payroll', body: html`<div class="head"><h1>${L.payroll_title}</h1></div>${monthly}${weekly}` });
   });
 
@@ -507,11 +538,12 @@ export function adminRouter({ botUsername }) {
     const p = await P.periodSummary(e, per.start, per.end, st);
     const qs = `start=${per.start}&end=${per.end}`;
     const days = Object.values(p.summary.days).filter((d) => d.shifts.length);
-    const back = `/payroll?${e.pay_cycle === 'weekly' ? 'w' : 'm'}=${per.start}`;
+    const back = e.pay_cycle === 'weekly' ? `/payroll?ws=${per.start}&we=${per.end}` : `/payroll?m=${per.start}`;
     res.page({ title: e.full_name, active: 'payroll', body: html`
       <a class="back" href="${back}">‹ ${L.payroll_title}</a>
       <div class="head"><h1>${e.full_name}</h1><p class="sub">${rangeLabel(L, lang, per.start, per.end)}</p></div>
       ${p.flags.pending || p.flags.review || p.flags.open ? html`<p class="flash note">${L.warn_open}</p>` : ''}
+      ${p.overlap.length ? html`<p class="flash note">${L.overlap_note(p.overlap.map((o) => `${ddmm(o.period_start)}–${ddmm(o.period_end)}`).join(', '))}</p>` : ''}
       <dl class="statement">
         <div><dt>${L.hours}</dt><dd class="time">${fmtMin(p.minutes)}</dd></div>
         <div><dt>${L.earned}</dt><dd>${fmtAmd(p.earned)}</dd></div>
@@ -524,7 +556,7 @@ export function adminRouter({ botUsername }) {
       <div class="actions">
         ${p.locked ? html`<span class="tag live">${L.locked}</span>
           <form method="post" action="/payroll/${e.id}/unlock?${qs}"><button class="btn ghost" data-confirm="${L.unlock_confirm}">${L.unlock}</button></form>`
-          : html`<form method="post" action="/payroll/${e.id}/paid?${qs}"><button class="btn primary" data-confirm="${L.mark_paid_confirm(fmtAmd(p.balance))}">${L.mark_paid}</button></form>`}
+          : p.overlap.length ? '' : html`<form method="post" action="/payroll/${e.id}/paid?${qs}"><button class="btn primary" data-confirm="${L.mark_paid_confirm(fmtAmd(p.balance))}">${L.mark_paid}</button></form>`}
         <a class="btn ghost" href="/payroll/${e.id}/receipt.pdf?${qs}" target="_blank" rel="noopener">${L.receipt}</a>
       </div>
       <section class="block"><h2>${L.adjustments}</h2>
@@ -555,7 +587,8 @@ export function adminRouter({ botUsername }) {
   r.post('/payroll/:id/paid', async (req, res) => {
     const e = await loadEmp(req, res); if (!e) return;
     if (!isDate(req.query.start) || !isDate(req.query.end)) return res.redirect('/payroll');
-    await P.markPaid(e, req.query.start, req.query.end, req.settings);
+    try { await P.markPaid(e, req.query.start, req.query.end, req.settings); }
+    catch (err) { if (err.code === 'overlap') return res.redirect(`${payBack(req)}&err=overlap`); throw err; }
     res.redirect(`${payBack(req)}&ok=paid`);
   });
   r.post('/payroll/:id/unlock', async (req, res) => {
@@ -651,6 +684,12 @@ export function adminRouter({ botUsername }) {
   });
 
   // ================= EXPORT =================
+  function requestRange(req, cycle) {
+    const { start, end } = req.query;
+    if (!isDate(start)) return null;
+    if (isDate(end) && start <= end && dayDiff(start, end) <= 62) return { start, end };
+    return periodOf(cycle, start);
+  }
   r.get('/export/timesheet.xlsx', async (req, res) => {
     if (!isDate(req.query.start) || !isDate(req.query.end)) return res.redirect('/timesheet');
     const buf = await timesheetXlsx(req.query.start, req.query.end, req.settings, req.L);
@@ -659,8 +698,7 @@ export function adminRouter({ botUsername }) {
   });
   r.get('/export/payroll.xlsx', async (req, res) => {
     const cycle = req.query.cycle === 'weekly' ? 'weekly' : 'monthly';
-    if (!isDate(req.query.start)) return res.redirect('/payroll');
-    const per = periodOf(cycle, req.query.start);
+    const per = requestRange(req, cycle); if (!per) return res.redirect('/payroll');
     const buf = await payrollXlsx(cycle, per.start, per.end, req.settings, req.L, req.lang);
     res.set('Content-Disposition', `attachment; filename="payroll_${per.start}_${per.end}.xlsx"`);
     res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').send(buf);
@@ -681,8 +719,7 @@ export function adminRouter({ botUsername }) {
   });
   r.get('/receipts.pdf', async (req, res) => {
     const cycle = req.query.cycle === 'weekly' ? 'weekly' : 'monthly';
-    if (!isDate(req.query.start)) return res.redirect('/payroll');
-    const per = periodOf(cycle, req.query.start);
+    const per = requestRange(req, cycle); if (!per) return res.redirect('/payroll');
     const emps = (await E.listEmployees({ includeInactive: true })).filter((e) => e.pay_cycle === cycle);
     const items = [];
     for (const e of emps) {

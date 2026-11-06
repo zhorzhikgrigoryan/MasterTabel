@@ -100,3 +100,26 @@ export function fmtMin(min) {
 export function fmtAmd(n) {
   return `${Math.round(n || 0).toLocaleString('en-US').replace(/,/g, ' ')} ֏`;
 }
+
+/** Number of days from a to b ('YYYY-MM-DD'), b - a. */
+export function dayDiff(a, b) {
+  return Math.round((Date.parse(`${b}T12:00:00Z`) - Date.parse(`${a}T12:00:00Z`)) / 864e5);
+}
+
+/** Quick weekly ranges. anchor = any day inside the wanted week. */
+export const WEEK_PRESETS = ['mon_sun', 'mon_fri', 'sat_fri'];
+export function presetRange(kind, anchor) {
+  if (kind === 'sat_fri') {
+    const fri = addDays(anchor, (5 - weekday(anchor) + 7) % 7);
+    return { start: addDays(fri, -6), end: fri };
+  }
+  const mon = weekStart(anchor);
+  return { start: mon, end: addDays(mon, kind === 'mon_fri' ? 4 : 6) };
+}
+export function detectPreset(start, end) {
+  for (const k of WEEK_PRESETS) {
+    const r = presetRange(k, addDays(start, 3));
+    if (r.start === start && r.end === end) return k;
+  }
+  return null;
+}

@@ -161,7 +161,7 @@ form.inline .btn { flex: none; }
 .copyrow input { font-size: .85rem; color: var(--muted); }
 
 /* ---------- the ledger (timesheet) ---------- */
-.ledger-wrap { overflow-x: auto; background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--r-md);
+.ledger-wrap { position: relative; overflow-x: auto; background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--r-md);
   -webkit-overflow-scrolling: touch; }
 .ledger { border-collapse: separate; border-spacing: 0; width: 100%; font-size: .92rem; }
 .ledger th, .ledger td { border-bottom: 1px solid var(--rule-soft); border-right: 1px solid var(--rule-soft); text-align: center; padding: 0; height: 46px; }
@@ -219,7 +219,7 @@ details.add[open] summary { margin-bottom: 10px; }
 /* ---------- payroll ---------- */
 .groupbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
 .groupbar h2 { margin: 0; }
-.table-wrap { overflow-x: auto; background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--r-md); }
+.table-wrap { position: relative; overflow-x: auto; background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--r-md); }
 .pay { border-collapse: collapse; width: 100%; font-size: .92rem; }
 .pay th, .pay td { padding: 12px; text-align: right; border-bottom: 1px solid var(--rule-soft); white-space: nowrap; }
 .pay th[scope=row], .pay thead th:first-child { text-align: left; font-weight: 500; }
@@ -250,3 +250,21 @@ form.wrapline select { flex: 0 1 160px; }
 .admins .rows { margin-bottom: 12px; }
 .invite-box { background: var(--ink-soft); border-radius: var(--r-md); padding: 12px 14px; }
 .invite-box p { margin: 0 0 4px; }
+
+/* payroll date range */
+.rangebar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin: 0 0 12px; }
+.rangebar .seg a { padding: 9px 14px; }
+form.range { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0; }
+form.range label { display: block; }
+form.range input[type=date] { width: auto; min-width: 9.5em; padding: 8px 10px; }
+form.range .dash { color: var(--muted); }
+.groupbar + .rangebar { margin-top: -2px; }
+@media (max-width: 520px) {
+  form.range { width: 100%; display: grid; grid-template-columns: 40px minmax(0, 1fr) 10px minmax(0, 1fr) 40px; gap: 4px; }
+  form.range label { min-width: 0; }
+  form.range input[type=date] { min-width: 0; width: 100%; padding: 8px 4px; font-size: .9rem; }
+  form.range .btn.ghost { padding: 0; }
+  .rangebar .seg { width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); }
+  .rangebar .seg a { text-align: center; padding: 9px 4px; }
+  form.range .btn.primary { grid-column: 1 / -1; }
+}

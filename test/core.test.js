@@ -163,3 +163,17 @@ test('receipt PDF and payroll Excel are generated', async () => {
   assert.match(row.getCell(11).value.formula, /^F5\+N\(G5\)/); // payable is a live formula
   assert.equal(row.getCell(10).value, 10000); // already paid
 });
+
+test('weekly presets and overlapping payment guard', async () => {
+  const { presetRange, detectPreset } = await import('../src/time.js');
+  assert.deepEqual(presetRange('sat_fri', '2026-11-06'), { start: '2026-10-31', end: '2026-11-06' });
+  assert.deepEqual(presetRange('mon_fri', '2026-11-06'), { start: '2026-11-02', end: '2026-11-06' });
+  assert.equal(detectPreset('2026-11-02', '2026-11-08'), 'mon_sun');
+  assert.equal(detectPreset('2026-11-03', '2026-11-05'), null);
+  const emp = await E.createEmployee({ full_name: 'Overlap', phone: '+37491000098', hourly_amd: 1000, rate_from: '2026-06-01', pay_cycle: 'weekly' });
+  await S.adminCreate(emp, '2026-06-05', '09:00', '10:00', null, settings);
+  await P.markPaid(emp, '2026-05-30', '2026-06-05', settings); // Sat–Fri
+  const p = await P.periodSummary(emp, '2026-06-01', '2026-06-07', settings); // Mon–Sun shares days
+  assert.equal(p.overlap.length, 1);
+  await assert.rejects(P.markPaid(emp, '2026-06-01', '2026-06-07', settings), /overlap/);
+});

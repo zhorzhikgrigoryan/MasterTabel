@@ -13,12 +13,15 @@ export async function isLocked(employeeId, date) {
 }
 
 export async function periodSummary(employee, start, end, settings) {
-  const [sum, adjustments, payments] = await Promise.all([
+  const [sum, adjustments, payments, overlap] = await Promise.all([
     summarizeOne(employee, start, end, settings),
     q(`SELECT * FROM adjustments WHERE employee_id=$1 AND period_start=$2 AND period_end=$3 ORDER BY created_at`,
       [employee.id, start, end]),
     q(`SELECT * FROM payments WHERE employee_id=$1 AND period_start=$2 AND period_end=$3 ORDER BY paid_at`,
       [employee.id, start, end]),
+    // Payments made for a different date range that shares days with this one (paid twice otherwise).
+    q(`SELECT DISTINCT period_start, period_end FROM payments WHERE employee_id=$1 AND period_start <= $3 AND period_end >= $2
+       AND NOT (period_start=$2 AND period_end=$3) ORDER BY period_start`, [employee.id, start, end]),
   ]);
   const total = (k) => adjustments.filter((a) => a.kind === k).reduce((s, a) => s + a.amount_amd, 0);
   const bonus = total('bonus'); const advance = total('advance'); const deduction = total('deduction');
@@ -30,6 +33,7 @@ export async function periodSummary(employee, start, end, settings) {
     balance: payable - paid,
     locked: payments.some((p) => p.locked),
     everPaid: payments.length > 0,
+    overlap,
     flags: sum.flags,
   };
 }
@@ -50,6 +54,7 @@ export async function deleteAdjustment(id) {
 
 export async function markPaid(employee, start, end, settings) {
   const p = await periodSummary(employee, start, end, settings);
+  if (p.overlap.length) { const e = new Error('overlap'); e.code = 'overlap'; e.overlap = p.overlap; throw e; }
   await q(`UPDATE payments SET locked=true WHERE employee_id=$1 AND period_start=$2 AND period_end=$3`,
     [employee.id, start, end]);
   if (p.balance !== 0 || !p.everPaid) {
