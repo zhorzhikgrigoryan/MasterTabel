@@ -60,7 +60,7 @@ export function validateEmployee(data) {
   if (!c.full_name) errors.push('name');
   if (normalizePhone(c.phone).length < 8) errors.push('phone');
   if (c.break_min < 0 || c.break_min > 600) errors.push('break');
-  if (data.hourly_amd !== undefined && !(parseRate(data.hourly_amd) >= 0)) errors.push('rate');
+  if (data.hourly_amd !== undefined && String(data.hourly_amd).trim() !== '' && !(parseRate(data.hourly_amd) >= 0)) errors.push('rate');
   return errors;
 }
 

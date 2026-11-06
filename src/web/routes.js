@@ -369,15 +369,18 @@ export function adminRouter({ botUsername }) {
     });
   });
 
+  /** 1692.2 -> "1692,20", 1600 -> "1600" (for the rate input) */
+  const rateInput = (v) => (v === null || v === undefined ? '' : Number.isInteger(Number(v)) ? String(Number(v)) : Number(v).toFixed(2).replace('.', ','));
+
   function employeeForm(L, e = {}, isNew = false) {
     const days = e.sched_days || [1, 2, 3, 4, 5];
     return html`
       <fieldset><div class="grid2">
         <label>${L.name}<input name="full_name" required value="${e.full_name || ''}" autocomplete="off"></label>
         <label>${L.phone}<input name="phone" type="tel" required value="${e.phone || ''}" placeholder="+374 91 123456"></label>
-        ${isNew ? html`<label>${L.rate}<input name="hourly_amd" type="text" inputmode="decimal" pattern="[0-9][0-9 ]*([.,][0-9]{1,2})?" placeholder="1692,20" required></label>
-          <label>${L.rate_from}<input name="rate_from" type="date" value="${today()}" required></label>` : ''}
-        <label>${L.break_min}<input name="break_min" type="number" min="0" max="600" step="5" value="${e.break_min ?? 60}"></label>
+        <label>${L.rate}<input name="hourly_amd" type="text" inputmode="decimal" pattern="[0-9][0-9 ]*([.,][0-9]{1,2})?" placeholder="1692,20" value="${rateInput(e.current_rate)}" ${isNew ? 'required' : ''}></label>
+        <label>${L.rate_from}<input name="rate_from" type="date" value="${today()}" required>${isNew ? '' : html`<span class="muted small hint">${L.rate_change_hint}</span>`}</label>
+        <label>${L.break_min}<input name="break_min" type="number" min="0" max="600" step="5" value="${e.break_min ?? 60}"><span class="muted small hint">${L.break_hint}</span></label>
         <label>${L.pay_cycle}<select name="pay_cycle">
           <option value="monthly" ${e.pay_cycle !== 'weekly' ? 'selected' : ''}>${L.monthly}</option>
           <option value="weekly" ${e.pay_cycle === 'weekly' ? 'selected' : ''}>${L.weekly}</option></select></label>
@@ -436,7 +439,7 @@ export function adminRouter({ botUsername }) {
         </form>
       </section>
       <section class="block"><h2>${L.edit_employee}</h2>
-        <form method="post" action="/employees/${e.id}" class="form">${employeeForm(L, e)}
+        <form method="post" action="/employees/${e.id}" class="form">${employeeForm(L, { ...e, current_rate: E.rateOn(rates, today()) || (rates.length ? rates.at(-1).hourly_amd : null) })}
           <div class="actions"><button class="btn primary">${L.save}</button></div></form>
       </section>
       <form method="post" action="/employees/${e.id}/${e.status === 'deactivated' ? 'reactivate' : 'deactivate'}">
@@ -447,8 +450,15 @@ export function adminRouter({ botUsername }) {
   r.post('/employees/:id', async (req, res) => {
     const errs = E.validateEmployee(req.body);
     if (errs.length) return res.redirect(`/employees/${req.params.id}?err=${errs[0]}`);
-    await E.updateEmployee(Number(req.params.id), req.body);
-    res.redirect(`/employees/${req.params.id}?ok=saved`);
+    const id = Number(req.params.id);
+    await E.updateEmployee(id, req.body);
+    // A changed rate is added to the history from the chosen date; earlier days keep their rate.
+    const rate = E.parseRate(req.body.hourly_amd);
+    if (rate >= 0 && isDate(req.body.rate_from)) {
+      const current = E.rateOn(await E.listRates(id), req.body.rate_from);
+      if (Math.abs(current - rate) > 0.001) await E.setRate(id, rate, req.body.rate_from);
+    }
+    res.redirect(`/employees/${id}?ok=saved`);
   });
   r.post('/employees/:id/rate', async (req, res) => {
     const rate = E.parseRate(req.body.hourly_amd);

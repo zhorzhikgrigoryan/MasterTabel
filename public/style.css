@@ -315,3 +315,5 @@ details.tv[open] summary { margin-bottom: 8px; }
   .tile .tv-num { font-size: 1.2rem; }
   .tile { padding: 12px; }
 }
+
+label .hint { font-weight: 400; margin-top: -2px; }
