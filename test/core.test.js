@@ -128,3 +128,38 @@ test('invite join requires matching phone', async () => {
   const rows = await q('SELECT telegram_id FROM employees WHERE id=$1', [emp.id]);
   assert.equal(rows[0].telegram_id, '111');
 });
+
+test('amounts in words', async () => {
+  const { amountInWords } = await import('../src/documents/words.js');
+  assert.equal(amountInWords(55267), 'Հիսունհինգ հազար երկու հարյուր վաթսունյոթ դրամ');
+  assert.equal(amountInWords(424123), 'Չորս հարյուր քսանչորս հազար հարյուր քսաներեք դրամ');
+  assert.equal(amountInWords(1000), 'Հազար դրամ');
+  assert.equal(amountInWords(110010), 'Հարյուր տասը հազար տասը դրամ');
+  assert.equal(amountInWords(2015000), 'Երկու միլիոն տասնհինգ հազար դրամ');
+  assert.equal(amountInWords(0), 'Զրո դրամ');
+  assert.equal(amountInWords(95250, 'en'), 'Ninety-five thousand two hundred fifty drams');
+});
+
+test('receipt PDF and payroll Excel are generated', async () => {
+  const { receiptsPdf, receiptAmount } = await import('../src/documents/receipt.js');
+  const { payrollXlsx } = await import('../src/export.js');
+  const ExcelJS = (await import('exceljs')).default;
+  const emp = await E.createEmployee({ full_name: 'Արամ Թեստ', phone: '+37491000099', hourly_amd: 2000, rate_from: '2026-07-01', pay_cycle: 'weekly' });
+  await S.adminCreate(emp, '2026-07-06', '09:00', '17:00', null, settings); // 8h -> 16000
+  const { start, end } = periodOf('weekly', '2026-07-06');
+  await P.addAdjustment(emp.id, start, end, 'advance', 6000, null);
+  const p = await P.periodSummary(emp, start, end, settings);
+  assert.equal(receiptAmount(p), 10000);
+  const pdf = await receiptsPdf([p], { lang: 'hy', business: 'Test' });
+  assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
+  await P.markPaid(emp, start, end, settings);
+  assert.equal(receiptAmount(await P.periodSummary(emp, start, end, settings)), 10000); // reprint after payment
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(await payrollXlsx('weekly', start, end, settings, {}, 'hy'));
+  assert.deepEqual(wb.worksheets.map((w) => w.name), ['Ամփոփում', 'Տաբել', 'Աշխատակիցներ', 'Լրացումներ']);
+  const row = wb.getWorksheet('Ամփոփում').getRow(5);
+  assert.equal(row.getCell(2).value, 'Արամ Թեստ');
+  assert.equal(row.getCell(6).value, 16000);
+  assert.match(row.getCell(11).value.formula, /^F5\+N\(G5\)/); // payable is a live formula
+  assert.equal(row.getCell(10).value, 10000); // already paid
+});

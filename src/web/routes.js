@@ -15,6 +15,7 @@ import {
   fmtMin, fmtAmd, parseHM, minutesOfDay, hmToMin,
 } from '../time.js';
 import { timesheetXlsx, payrollXlsx } from '../export.js';
+import { receiptsPdf } from '../documents/receipt.js';
 
 const COOKIE = 'mt_s';
 
@@ -473,16 +474,18 @@ export function adminRouter({ botUsername }) {
     return html`<section class="block">
       <div class="groupbar"><h2>${cycle === 'weekly' ? L.weekly_people : L.monthly_people}</h2>
         <div class="toolbar tight"><a class="btn ghost" href="${nav(prev)}" aria-label="${L.prev}">‹</a><span class="period">${rangeLabel(L, lang, start, end)}</span><a class="btn ghost" href="${nav(next)}" aria-label="${L.next}">›</a>
-        <a class="btn ghost" href="/export/payroll.xlsx?cycle=${cycle}&start=${start}">${L.export_xlsx}</a></div></div>
+        <a class="btn ghost" href="/export/payroll.xlsx?cycle=${cycle}&start=${start}">${L.export_xlsx}</a>
+        ${rows.length ? html`<a class="btn ghost" href="/receipts.pdf?cycle=${cycle}&start=${start}" target="_blank" rel="noopener">${L.receipts_all}</a>` : ''}</div></div>
       ${rows.length ? html`<div class="table-wrap"><table class="pay">
-        <thead><tr><th scope="col">${L.employee}</th><th scope="col">${L.hours}</th><th scope="col">${L.earned}</th><th scope="col">${L.adjustments}</th><th scope="col">${L.paid}</th><th scope="col">${L.to_pay}</th><th scope="col"><span class="sr">${L.status}</span></th></tr></thead>
+        <thead><tr><th scope="col">${L.employee}</th><th scope="col">${L.hours}</th><th scope="col">${L.earned}</th><th scope="col">${L.adjustments}</th><th scope="col">${L.paid}</th><th scope="col">${L.to_pay}</th><th scope="col"><span class="sr">${L.status}</span></th><th scope="col"><span class="sr">${L.receipt}</span></th></tr></thead>
         <tbody>${rows.map((p) => html`<tr>
           <th scope="row"><a href="/payroll/${p.employee.id}?start=${start}&end=${end}">${p.employee.full_name}</a>${p.flags.pending || p.flags.review ? html` <span class="tag warn" title="${L.warn_open}">!</span>` : ''}</th>
           <td class="time">${fmtMin(p.minutes)}</td><td class="amd">${fmtAmd(p.earned)}</td>
           <td class="amd">${p.bonus - p.advance - p.deduction ? fmtAmd(p.bonus - p.advance - p.deduction) : '—'}</td>
           <td class="amd">${p.paid ? fmtAmd(p.paid) : '—'}</td><td class="amd strong">${fmtAmd(p.balance)}</td>
-          <td><a class="tag ${p.locked ? 'live' : ''}" href="/payroll/${p.employee.id}?start=${start}&end=${end}">${p.locked ? L.locked : L.not_paid}</a></td></tr>`)}</tbody>
-        <tfoot><tr><th scope="row">${L.total}</th><td></td><td></td><td></td><td></td><td class="amd strong">${fmtAmd(tot)}</td><td></td></tr></tfoot>
+          <td><a class="tag ${p.locked ? 'live' : ''}" href="/payroll/${p.employee.id}?start=${start}&end=${end}">${p.locked ? L.locked : L.not_paid}</a></td>
+          <td>${p.minutes || p.balance || p.paid ? html`<a class="btn ghost small" href="/payroll/${p.employee.id}/receipt.pdf?start=${start}&end=${end}" target="_blank" rel="noopener">${L.receipt}</a>` : ''}</td></tr>`)}</tbody>
+        <tfoot><tr><th scope="row">${L.total}</th><td></td><td></td><td></td><td></td><td class="amd strong">${fmtAmd(tot)}</td><td></td><td></td></tr></tfoot>
       </table></div>` : html`<p class="empty">${L.nobody}</p>`}
     </section>`;
   }
@@ -522,6 +525,7 @@ export function adminRouter({ botUsername }) {
         ${p.locked ? html`<span class="tag live">${L.locked}</span>
           <form method="post" action="/payroll/${e.id}/unlock?${qs}"><button class="btn ghost" data-confirm="${L.unlock_confirm}">${L.unlock}</button></form>`
           : html`<form method="post" action="/payroll/${e.id}/paid?${qs}"><button class="btn primary" data-confirm="${L.mark_paid_confirm(fmtAmd(p.balance))}">${L.mark_paid}</button></form>`}
+        <a class="btn ghost" href="/payroll/${e.id}/receipt.pdf?${qs}" target="_blank" rel="noopener">${L.receipt}</a>
       </div>
       <section class="block"><h2>${L.adjustments}</h2>
         ${p.adjustments.length ? html`<ul class="rows">${p.adjustments.map((a) => html`<li class="row"><div>
@@ -597,6 +601,8 @@ export function adminRouter({ botUsername }) {
         </div>
         <label class="check"><input type="checkbox" name="notify_owner_requests" value="1" ${st.notify_owner_requests ? 'checked' : ''}> ${L.notify_requests}</label>
         </fieldset>
+        <fieldset><label>${L.business_name}<input name="business_name" maxlength="120" value="${st.business_name || ''}" placeholder="${L.business_name_ph}"></label>
+          <p class="muted small">${L.business_name_hint}</p></fieldset>
         <fieldset><legend>${L.panel_lang}</legend>
           <div class="seg" role="group">${['hy', 'en'].map((l) => html`<a href="/lang/${l}?back=/settings" class="${req.lang === l ? 'on' : ''}">${l === 'hy' ? 'Հայերեն' : 'English'}</a>`)}</div>
         </fieldset>
@@ -640,6 +646,7 @@ export function adminRouter({ botUsername }) {
     await setSetting('remind_out_again', num(b.remind_out_again, 60));
     await setSetting('late_grace', num(b.late_grace, 5));
     await setSetting('notify_owner_requests', b.notify_owner_requests === '1');
+    await setSetting('business_name', String(b.business_name || '').trim().slice(0, 120));
     res.redirect('/settings?ok=saved');
   });
 
@@ -654,9 +661,36 @@ export function adminRouter({ botUsername }) {
     const cycle = req.query.cycle === 'weekly' ? 'weekly' : 'monthly';
     if (!isDate(req.query.start)) return res.redirect('/payroll');
     const per = periodOf(cycle, req.query.start);
-    const buf = await payrollXlsx(cycle, per.start, per.end, req.settings, req.L);
+    const buf = await payrollXlsx(cycle, per.start, per.end, req.settings, req.L, req.lang);
     res.set('Content-Disposition', `attachment; filename="payroll_${per.start}_${per.end}.xlsx"`);
     res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').send(buf);
+  });
+
+  // ================= RECEIPTS (PDF) =================
+  const asciiName = (s) => `receipt_${String(s).replace(/[^A-Za-z0-9-]+/g, '_').replace(/^_+|_+$/g, '')}`;
+  function sendPdf(res, buf, name) {
+    res.set('Content-Disposition', `inline; filename="${asciiName(name)}.pdf"; filename*=UTF-8''${encodeURIComponent(name)}.pdf`);
+    res.type('application/pdf').send(buf);
+  }
+  r.get('/payroll/:id/receipt.pdf', async (req, res) => {
+    const e = await loadEmp(req, res); if (!e) return;
+    if (!isDate(req.query.start) || !isDate(req.query.end)) return res.redirect('/payroll');
+    const p = await P.periodSummary(e, req.query.start, req.query.end, req.settings);
+    const buf = await receiptsPdf([p], { lang: req.lang, business: req.settings.business_name });
+    sendPdf(res, buf, `${req.L.receipt}_${e.full_name}_${req.query.start}`);
+  });
+  r.get('/receipts.pdf', async (req, res) => {
+    const cycle = req.query.cycle === 'weekly' ? 'weekly' : 'monthly';
+    if (!isDate(req.query.start)) return res.redirect('/payroll');
+    const per = periodOf(cycle, req.query.start);
+    const emps = (await E.listEmployees({ includeInactive: true })).filter((e) => e.pay_cycle === cycle);
+    const items = [];
+    for (const e of emps) {
+      const p = await P.periodSummary(e, per.start, per.end, req.settings);
+      if (p.minutes || p.balance || p.paid) items.push(p);
+    }
+    const buf = await receiptsPdf(items, { lang: req.lang, business: req.settings.business_name });
+    sendPdf(res, buf, `${req.L.receipt}_${per.start}_${per.end}`);
   });
 
   return r;

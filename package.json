@@ -5,7 +5,9 @@
   "type": "module",
   "description": "MasterTabel — employee time tracking with a Telegram bot and an admin panel",
   "main": "src/server.js",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "node src/server.js",
     "dev": "DEV_LOGIN=1 node src/server.js",
@@ -15,6 +17,7 @@
     "exceljs": "^4.4.0",
     "express": "^4.21.2",
     "grammy": "^1.46.0",
+    "pdfkit": "^0.17.2",
     "pg": "^8.13.1"
   },
   "optionalDependencies": {
