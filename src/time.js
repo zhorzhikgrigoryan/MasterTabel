@@ -97,6 +97,14 @@ export function fmtMin(min) {
   return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`;
 }
 
+/** Rate with up to 2 decimals, Armenian style: 1 692,20 ֏ (whole numbers stay 1 600 ֏). */
+export function fmtRate(n) {
+  const v = Math.round((Number(n) || 0) * 100) / 100;
+  const [i, f] = v.toFixed(2).split('.');
+  const int = Number(i).toLocaleString('en-US').replace(/,/g, ' ');
+  return `${int}${f === '00' ? '' : `,${f}`} ֏`;
+}
+
 export function fmtAmd(n) {
   return `${Math.round(n || 0).toLocaleString('en-US').replace(/,/g, ' ')} ֏`;
 }

@@ -51,6 +51,13 @@ CREATE TABLE IF NOT EXISTS shifts (
 );
 CREATE INDEX IF NOT EXISTS shifts_emp_date ON shifts (employee_id, work_date);
 
+-- Rates may have decimals (e.g. 1692.20). Upgrade older databases that stored whole numbers.
+DO $$ BEGIN
+  IF (SELECT data_type FROM information_schema.columns WHERE table_name = 'rates' AND column_name = 'hourly_amd') = 'integer' THEN
+    ALTER TABLE rates ALTER COLUMN hourly_amd TYPE NUMERIC(12,2);
+  END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS shift_edits (
   id          SERIAL PRIMARY KEY,
   shift_id    INTEGER,

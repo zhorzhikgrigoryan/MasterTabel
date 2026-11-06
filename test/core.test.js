@@ -190,3 +190,19 @@ test('analytics totals match the timesheet', async () => {
   assert.equal(a.weekdays[0].minutes, 480); // Monday
   assert.equal(a.months.at(-1).month, '2025-02-01');
 });
+
+test('hourly rates keep decimals and accept a comma', async () => {
+  const { fmtRate } = await import('../src/time.js');
+  assert.equal(E.parseRate('1692,20'), 1692.2);
+  assert.equal(E.parseRate('1 692.5'), 1692.5);
+  assert.ok(Number.isNaN(E.parseRate('abc')));
+  assert.ok(Number.isNaN(E.parseRate('1692,205')));
+  assert.equal(fmtRate(1692.2), '1 692,20 ֏');
+  assert.equal(fmtRate(1600), '1 600 ֏');
+  const emp = await E.createEmployee({ full_name: 'Decimal', phone: '+37491000096', hourly_amd: '1692,20', rate_from: '2025-03-01' });
+  const [r] = await E.listRates(emp.id);
+  assert.equal(r.hourly_amd, 1692.2);
+  await S.adminCreate(emp, '2025-03-03', '09:00', '19:00', null, settings); // 10h
+  const sum = await summarizeOne(emp, '2025-03-03', '2025-03-03', settings);
+  assert.equal(sum.earned, 16922);
+});

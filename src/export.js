@@ -72,7 +72,7 @@ function navyHeader(row) {
 
 export async function payrollXlsx(cycle, start, end, settings, L, lang = 'hy') {
   const D = dt(lang);
-  const money = `#,##0 "${D.amd}"`; const rateFmt = `#,##0 "${D.per_hour}"`;
+  const money = `#,##0 "${D.amd}"`; const rateFmt = `#,##0.00 "${D.per_hour}"`;
   const emps = (await listEmployees({ includeInactive: true })).filter((e) => e.pay_cycle === cycle);
   const periods = [];
   for (const e of emps) {

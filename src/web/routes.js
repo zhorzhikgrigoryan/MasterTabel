@@ -12,7 +12,7 @@ import {
 } from '../core/auth.js';
 import {
   today, hm, dateOf, addDays, weekStart, monthStart, monthEnd, daysBetween, weekday, periodOf, shiftPeriod,
-  fmtMin, fmtAmd, parseHM, minutesOfDay, hmToMin, dayDiff, WEEK_PRESETS, presetRange, detectPreset,
+  fmtMin, fmtAmd, fmtRate, parseHM, minutesOfDay, hmToMin, dayDiff, WEEK_PRESETS, presetRange, detectPreset,
 } from '../time.js';
 import { timesheetXlsx, payrollXlsx } from '../export.js';
 import { receiptsPdf } from '../documents/receipt.js';
@@ -362,7 +362,7 @@ export function adminRouter({ botUsername }) {
         <div class="head"><h1>${L.people_title}</h1><a class="btn primary" href="/employees/new">+ ${L.add_employee}</a></div>
         ${emps.length ? html`<ul class="rows">${emps.map((e) => html`<li class="row"><a href="/employees/${e.id}">
           <span class="row-main"><strong>${e.full_name}</strong><span class="muted">${e.phone}</span></span>
-          <span class="row-side"><span class="amd">${e.current_rate ? `${fmtAmd(e.current_rate)}${L.per_hour}` : '—'}</span>
+          <span class="row-side"><span class="amd">${e.current_rate !== null && e.current_rate !== undefined ? `${fmtRate(e.current_rate)}${L.per_hour}` : '—'}</span>
           <span class="tag ${e.status === 'active' ? 'live' : e.status === 'invited' ? 'warn' : ''}">${L[`status_${e.status}`]}</span></span></a></li>`)}</ul>`
           : html`<p class="empty">${L.no_employees}</p>`}
         <p><a class="muted small" href="/employees${all ? '' : '?all=1'}">${all ? '‹' : ''} ${L.show_inactive}</a></p>`,
@@ -375,7 +375,7 @@ export function adminRouter({ botUsername }) {
       <fieldset><div class="grid2">
         <label>${L.name}<input name="full_name" required value="${e.full_name || ''}" autocomplete="off"></label>
         <label>${L.phone}<input name="phone" type="tel" required value="${e.phone || ''}" placeholder="+374 91 123456"></label>
-        ${isNew ? html`<label>${L.rate}<input name="hourly_amd" type="number" min="0" step="10" required></label>
+        ${isNew ? html`<label>${L.rate}<input name="hourly_amd" type="text" inputmode="decimal" pattern="[0-9][0-9 ]*([.,][0-9]{1,2})?" placeholder="1692,20" required></label>
           <label>${L.rate_from}<input name="rate_from" type="date" value="${today()}" required></label>` : ''}
         <label>${L.break_min}<input name="break_min" type="number" min="0" max="600" step="5" value="${e.break_min ?? 60}"></label>
         <label>${L.pay_cycle}<select name="pay_cycle">
@@ -426,11 +426,11 @@ export function adminRouter({ botUsername }) {
       </section>` : ''}
       <section class="block">
         <h2>${L.rates}</h2><p class="muted small">${L.rate_hint}</p>
-        <ul class="rows">${rates.map((rt) => html`<li class="row"><div><span class="row-main"><strong class="amd">${fmtAmd(rt.hourly_amd)}${L.per_hour}</strong></span>
+        <ul class="rows">${rates.map((rt) => html`<li class="row"><div><span class="row-main"><strong class="amd">${fmtRate(rt.hourly_amd)}${L.per_hour}</strong></span>
           <span class="row-side"><span class="muted">${L.rate_from}</span> ${dateLabel(L, lang, rt.effective_from)}
           <form method="post" action="/rates/${rt.id}/delete" class="inline-del"><input type="hidden" name="emp" value="${e.id}"><button class="x" aria-label="${L.delete}" data-confirm="${L.confirm}">×</button></form></span></div></li>`)}</ul>
         <form method="post" action="/employees/${e.id}/rate" class="inline">
-          <input type="number" name="hourly_amd" min="0" step="10" required placeholder="${L.rate}">
+          <input type="text" inputmode="decimal" pattern="[0-9][0-9 ]*([.,][0-9]{1,2})?" name="hourly_amd" required placeholder="${L.rate}">
           <input type="date" name="effective_from" value="${today()}" required>
           <button class="btn ghost">${L.add_rate}</button>
         </form>
@@ -451,8 +451,9 @@ export function adminRouter({ botUsername }) {
     res.redirect(`/employees/${req.params.id}?ok=saved`);
   });
   r.post('/employees/:id/rate', async (req, res) => {
-    if (!(Number(req.body.hourly_amd) >= 0) || !isDate(req.body.effective_from)) return res.redirect(`/employees/${req.params.id}?err=invalid`);
-    await E.setRate(Number(req.params.id), Number(req.body.hourly_amd), req.body.effective_from);
+    const rate = E.parseRate(req.body.hourly_amd);
+    if (!(rate >= 0) || !isDate(req.body.effective_from)) return res.redirect(`/employees/${req.params.id}?err=rate`);
+    await E.setRate(Number(req.params.id), rate, req.body.effective_from);
     res.redirect(`/employees/${req.params.id}?ok=saved`);
   });
   r.post('/rates/:rid/delete', async (req, res) => {

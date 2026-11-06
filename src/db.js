@@ -12,6 +12,7 @@ export async function connect({ url = process.env.DATABASE_URL, memory = false }
     const pg = (await import('pg')).default;
     pg.types.setTypeParser(1082, (v) => v); // DATE -> 'YYYY-MM-DD'
     pg.types.setTypeParser(20, (v) => v); // BIGINT -> string
+    pg.types.setTypeParser(1700, (v) => (v === null ? null : Number(v))); // NUMERIC -> number
     const ssl = /sslmode=require|railway|supabase|neon/.test(url) && !/localhost|\.internal/.test(url)
       ? { rejectUnauthorized: false } : undefined;
     const pool = new pg.Pool({ connectionString: url, ssl, max: 5 });
@@ -22,7 +23,7 @@ export async function connect({ url = process.env.DATABASE_URL, memory = false }
     };
   } else {
     const { PGlite } = await import('@electric-sql/pglite');
-    const opts = { parsers: { 1082: (v) => v, 20: (v) => String(v) } };
+    const opts = { parsers: { 1082: (v) => v, 20: (v) => String(v), 1700: (v) => (v === null ? null : Number(v)) } };
     if (!memory) opts.dataDir = path.join(here, '..', 'data');
     const db = new PGlite(opts);
     impl = {

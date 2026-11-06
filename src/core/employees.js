@@ -4,6 +4,13 @@ import { today } from '../time.js';
 
 export const newToken = (n = 12) => randomBytes(n).toString('base64url');
 
+/** "1692,20" / "1 692.2" -> 1692.2 ; invalid -> NaN. Rates keep 2 decimals. */
+export function parseRate(v) {
+  const s = String(v ?? '').trim().replace(/[\s\u00a0]/g, '').replace(',', '.');
+  if (!/^\d+(\.\d{1,2})?$/.test(s)) return NaN;
+  return Math.round(Number(s) * 100) / 100;
+}
+
 /** Keep digits; Armenian numbers compared by their last 8 digits. */
 export function normalizePhone(p) {
   return String(p || '').replace(/\D/g, '');
@@ -53,6 +60,7 @@ export function validateEmployee(data) {
   if (!c.full_name) errors.push('name');
   if (normalizePhone(c.phone).length < 8) errors.push('phone');
   if (c.break_min < 0 || c.break_min > 600) errors.push('break');
+  if (data.hourly_amd !== undefined && !(parseRate(data.hourly_amd) >= 0)) errors.push('rate');
   return errors;
 }
 
@@ -65,7 +73,8 @@ export async function createEmployee(data) {
     [c.full_name, c.phone, c.break_min, c.pay_cycle, c.sched_days, c.sched_start, c.sched_end,
       c.remind_in_after, c.remind_out_again, c.notes, c.lang, newToken()],
   );
-  if (data.hourly_amd) await setRate(e.id, Number(data.hourly_amd), data.rate_from || today());
+  const rate = parseRate(data.hourly_amd);
+  if (rate >= 0) await setRate(e.id, rate, data.rate_from || today());
   return e;
 }
 
@@ -124,7 +133,7 @@ export async function setRate(employeeId, hourlyAmd, effectiveFrom) {
     `INSERT INTO rates (employee_id, hourly_amd, effective_from) VALUES ($1,$2,$3)
      ON CONFLICT (employee_id, effective_from) DO UPDATE SET hourly_amd = EXCLUDED.hourly_amd
      RETURNING *`,
-    [employeeId, Math.round(hourlyAmd), effectiveFrom],
+    [employeeId, Math.round(Number(hourlyAmd) * 100) / 100, effectiveFrom],
   );
 }
 export const listRates = (employeeId) =>

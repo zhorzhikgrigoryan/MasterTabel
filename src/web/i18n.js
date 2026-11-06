@@ -90,7 +90,7 @@ const hy = {
   ok_saved: 'Պահպանված է։', ok_paid: 'Նշված է որպես վճարված։', ok_unlocked: 'Բացված է խմբագրման համար։',
   err_locked: 'Այս օրը վճարված ժամանակահատվածում է։ Նախ բացեք այն «Վճարումներ» բաժնում։',
   err_out_before_in: 'Ելքը պետք է լինի մուտքից հետո։', err_invalid: 'Ստուգեք լրացված դաշտերը։',
-  err_name: 'Լրացրեք անունը։', err_phone: 'Լրացրեք ճիշտ հեռախոսահամար։',
+  err_name: 'Լրացրեք անունը։', err_phone: 'Լրացրեք ճիշտ հեռախոսահամար։', err_rate: 'Ժամավճարը գրեք թվով, օրինակ՝ 1692,20։',
   confirm: 'Համոզվա՞ծ եք։', cancel: 'Չեղարկել', back: 'Հետ',
 };
 
@@ -177,7 +177,7 @@ const en = {
   ok_saved: 'Saved.', ok_paid: 'Marked as paid.', ok_unlocked: 'Unlocked for editing.',
   err_locked: 'This day is in a paid period. Unlock it in Payroll first.',
   err_out_before_in: 'Check-out must be after check-in.', err_invalid: 'Check the fields you filled in.',
-  err_name: 'Enter a name.', err_phone: 'Enter a valid phone number.',
+  err_name: 'Enter a name.', err_phone: 'Enter a valid phone number.', err_rate: 'Enter the rate as a number, e.g. 1692.20.',
   confirm: 'Are you sure?', cancel: 'Cancel', back: 'Back',
 };
 
